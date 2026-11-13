@@ -44,7 +44,7 @@
 <midi-instrument id="P13-I1"><midi-channel>13</midi-channel><midi-program>54</midi-program></midi-instrument></score-part>
 <score-part id="P14"><part-name>Violoncello</part-name>
 <score-instrument id="P14-I1"><instrument-name>Violoncello</instrument-name></score-instrument>
-<midi-instrument id="P14-I1"><midi-channel>14</midi-channel><midi-program>41</midi-program></midi-instrument></score-part>
+<midi-instrument id="P14-I1"><midi-channel>14</midi-channel><midi-program>43</midi-program></midi-instrument></score-part>
 <score-part id="P15"><part-name>Contrabbasso</part-name>
 <score-instrument id="P15-I1"><instrument-name>Contrabbasso</instrument-name></score-instrument>
 <midi-instrument id="P15-I1"><midi-channel>15</midi-channel><midi-program>44</midi-program></midi-instrument></score-part>

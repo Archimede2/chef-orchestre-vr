@@ -5,7 +5,7 @@
 
 import * as THREE from 'three';
 import { VRButton } from 'three/addons/webxr/VRButton.js';
-import { Orchestre } from './orchestre.js?v=4';
+import { Orchestre } from './orchestre.js?v=5';
 
 // ---------------------------------------------------------------- Réglages
 const REGLAGES = {

@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chef d'orchestre — Lecteur de partition</title>
+<style>
+  :root { --fond: #101018; --carte: #1b1b26; --texte: #e8e6df; --accent: #ffd27a; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--fond); color: var(--texte);
+               font-family: -apple-system, system-ui, sans-serif; }
+  body { display: flex; flex-direction: column; }
+  header { display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
+           padding: 10px 14px; background: var(--carte); border-bottom: 1px solid #2c2c3a; }
+  header h1 { font-size: 16px; margin: 0 12px 0 0; color: var(--accent); white-space: nowrap; }
+  button { font-size: 14px; padding: 7px 12px; border-radius: 8px; border: 1px solid #3a3a4c;
+           background: #262636; color: var(--texte); cursor: pointer; }
+  button:hover { background: #303044; }
+  button.principal { background: var(--accent); color: #2a1d10; border-color: var(--accent); font-weight: 600; }
+  #hud { display: flex; gap: 16px; margin-left: auto; font-size: 13px; align-items: center; }
+  #hud b { color: var(--accent); font-weight: 600; }
+  #battement { width: 14px; height: 14px; border-radius: 50%; background: #333; transition: transform .05s; }
+  main { flex: 1; display: flex; min-height: 0; }
+  #zoneScore { flex: 1; overflow: auto; background: #f5f2e9; }
+  #score { padding: 12px; }
+  #accueil { color: #555; padding: 40px; font-size: 15px; max-width: 540px; }
+  aside { width: 280px; min-width: 280px; overflow: auto; background: var(--carte);
+          border-left: 1px solid #2c2c3a; padding: 12px; display: flex; flex-direction: column; gap: 14px; }
+  aside h2 { font-size: 13px; margin: 0 0 6px; color: var(--accent); text-transform: uppercase; letter-spacing: .5px; }
+  #cadreVideo { position: relative; width: 100%; aspect-ratio: 16/9; background: #000; border-radius: 8px; overflow: hidden; }
+  #video, #calque { position: absolute; inset: 0; width: 100%; height: 100%; transform: scaleX(-1); }
+  #calque { object-fit: contain; }
+  label.ligne { display: flex; align-items: center; gap: 8px; font-size: 13px; margin: 4px 0; }
+  input[type=range] { flex: 1; }
+  #pupitres { font-size: 13px; }
+  #pupitres .rang { display: flex; align-items: center; gap: 6px; padding: 3px 0; border-bottom: 1px solid #2c2c3a; }
+  #pupitres .rang span { flex: 1; }
+  #statut { font-size: 13px; min-height: 1.3em; color: var(--accent); }
+  #infoIphoneL { font-size: 13px; }
+  .petit { font-size: 12px; opacity: .65; line-height: 1.4; }
+  #glisser { position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
+             background: rgba(16,16,24,.85); font-size: 22px; color: var(--accent); z-index: 50; pointer-events: none; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Lecteur de partition</h1>
+  <button id="btnOuvrir">Ouvrir un MusicXML…</button>
+  <input id="fichier" type="file" accept=".musicxml,.xml" style="display:none">
+  <button id="btnSon" class="principal">Activer le son</button>
+  <button id="btnWebcam">Webcam (2 mains)</button>
+  <button id="btnIphoneL">iPhone</button>
+  <div id="hud">
+    <div id="battement"></div>
+    <span id="etatEl">—</span>
+    <span>Tempo <b id="tempoEl">—</b></span>
+    <span>Mesure <b id="mesEl">—</b></span>
+    <span>Décalage <b id="decalEl">—</b></span>
+    <span>Nuance <b id="nuanceEl">—</b></span>
+  </div>
+</header>
+<main>
+  <div id="zoneScore">
+    <div id="accueil">
+      <b>Chef d'orchestre — lecteur pour compositeurs et arrangeurs.</b><br><br>
+      Glisse ici un fichier MusicXML (ou bouton « Ouvrir »), clique sur « Activer le son »,
+      puis bats la mesure : <b>Espace</b>, la <b>webcam</b> (main droite = battue,
+      main gauche = nuance) ou l'<b>iPhone</b>.<br><br>
+      Deux battues à vide, la musique part sur la troisième et suit ton tempo.
+      La Pavane de Fauré se charge par défaut…
+    </div>
+    <div id="score"></div>
+  </div>
+  <aside>
+    <div id="statut"></div>
+    <div>
+      <h2>Webcam</h2>
+      <div id="cadreVideo"><video id="video" autoplay playsinline muted></video><canvas id="calque"></canvas></div>
+      <label class="ligne"><input type="checkbox" id="invG" checked> Inverser gauche / droite</label>
+      <label class="ligne">Sensibilité <input type="range" id="seuilCam" min="0.4" max="3" step="0.1" value="1.0"></label>
+      <label class="ligne">Avance <input type="range" id="avance" min="0" max="200" step="10" value="100"> <span id="avanceV">100 ms</span></label>
+      <div class="petit">Point orange = main de la battue (temps au bas du geste). Point bleu = main gauche :
+        plus elle est haute, plus l'orchestre joue fort. « Avance » compense le retard de la caméra.</div>
+    </div>
+    <div>
+      <h2>iPhone</h2>
+      <div id="infoIphoneL" class="petit">Clique sur « iPhone » en haut pour afficher un code à saisir dans baguette.html.</div>
+    </div>
+    <div>
+      <h2>Pupitres (S = solo, M = muet)</h2>
+      <div id="pupitres" class="petit">Charge une partition…</div>
+    </div>
+  </aside>
+</main>
+<div id="glisser">Dépose ton fichier MusicXML</div>
+<script src="https://cdn.jsdelivr.net/npm/opensheetmusicdisplay@1.8.4/build/opensheetmusicdisplay.min.js"></script>
+<script type="module" src="./lecteur.js?v=1"></script>
+</body>
+</html>

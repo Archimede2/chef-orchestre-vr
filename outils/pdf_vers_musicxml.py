@@ -57,9 +57,10 @@ INSTRUMENTS = [
     (['corno in fa', 'horn in f', 'cor en fa', 'corno', 'horn', 'cor', 'cr.'], -7, 61),
     (['tromba', 'trumpet', 'trompette', 'tr.'], 0, 57), (['trombone', 'trb.'], 0, 58), (['tuba'], 0, 59),
     (['timpani', 'timbales'], 0, 48), (['arpa', 'harp', 'harpe'], 0, 47),
-    (['violino', 'violin', 'violon', 'vno.', 'vl.'], 0, 41), (['viola', 'vla.', 'alto (cordes)'], 0, 42),
     (['violoncello', 'cello', 'violoncelle', 'vc.'], 0, 43),
     (['contrabbasso', 'contrebasse', 'double bass', 'cb.'], -12, 44),
+    (['viola', 'vla.', 'alto (cordes)'], 0, 42),
+    (['violino', 'violin', 'violon', 'vno.', 'vl.'], 0, 41),
     (['soprano'], 0, 54), (['alto', 'contralto'], 0, 54), (['tenore', 'tenor', 'ténor'], 0, 54),
     (['basso', 'bass', 'basse'], 0, 54),
 ]

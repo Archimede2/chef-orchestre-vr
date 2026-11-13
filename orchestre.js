@@ -22,11 +22,13 @@ export class Orchestre {
   }
 
   get totalTemps() {
-    return this.partition ? this.partition.mesures * this.partition.tempsParMesure : 0;
+    if (!this.partition) return 0;
+    return this.partition.totalTemps || this.partition.mesures * this.partition.tempsParMesure;
   }
 
-  async charger(urlPartition, positions, progres) {
-    const p = await (await fetch(urlPartition)).json();
+  // source : une URL de partition de jeu (.json), ou l'objet partition lui-même
+  async charger(source, positions, progres) {
+    const p = typeof source === 'string' ? await (await fetch(source)).json() : source;
     this.partition = p;
 
     const besoin = {};
