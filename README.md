@@ -11,6 +11,7 @@ En ligne : https://archimede2.github.io/chef-orchestre-vr/
 - Sans battue pendant 3 temps : ralenti désordonné, puis arrêt ; reprise au début de la mesure interrompue.
 - Son spatialisé : chaque pupitre sonne depuis sa place.
 - Sur ordinateur : Espace = un temps, souris = orientation de la tête.
+- Mise au point : l'iPhone peut servir de baguette (bouton sur la page, puis `baguette.html` sur l'iPhone, liaison WebRTC via PeerJS).
 
 ## Fichiers
 

@@ -233,13 +233,58 @@ function suivreBaguette(t, dt) {
     if (t - dernierIctus > REGLAGES.intervalleMin) {
       amplitude = Math.max(0, yHaut - posPointe.y);
       yHaut = posPointe.y;
-      // 5 cm -> piano (x0,6) ; 35 cm et plus -> forte (x1,3)
-      const cible = 0.6 + 0.7 * Math.min(1, Math.max(0, (amplitude - 0.05) / 0.3));
-      gainGeste += (cible - gainGeste) * 0.5;
+      appliquerAmplitude(amplitude);
       ictus(t);
     }
   }
 }
+
+// 5 cm -> piano (x0,6) ; 35 cm et plus -> forte (x1,3)
+function appliquerAmplitude(a) {
+  const cible = 0.6 + 0.7 * Math.min(1, Math.max(0, (a - 0.05) / 0.3));
+  gainGeste += (cible - gainGeste) * 0.5;
+}
+
+// ---------------------------------------------------------------- iPhone comme baguette (mise au point)
+// Le Mac affiche un code ; la page baguette.html ouverte sur l'iPhone s'y connecte
+// (WebRTC via le service gratuit PeerJS) et envoie chaque temps détecté par l'accéléromètre.
+const btnIphone = document.getElementById('btnIphone');
+const infoIphone = document.getElementById('infoIphone');
+btnIphone?.addEventListener('click', async () => {
+  reveilAudio();
+  btnIphone.disabled = true;
+  infoIphone.textContent = 'Connexion…';
+  try {
+    if (!window.Peer) {
+      await new Promise((ok, ko) => {
+        const sc = document.createElement('script');
+        sc.src = 'https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js';
+        sc.onload = ok; sc.onerror = () => ko(new Error('PeerJS introuvable'));
+        document.head.appendChild(sc);
+      });
+    }
+    const code = String(Math.floor(1000 + Math.random() * 9000));
+    const peer = new window.Peer('chef-orchestre-vr-' + code);
+    peer.on('open', () => {
+      infoIphone.innerHTML = `Sur l'iPhone, ouvre <b>${location.origin}${location.pathname.replace(/index\.html$/, '')}baguette.html</b><br>et saisis le code <b style="font-size:22px">${code}</b>`;
+    });
+    peer.on('connection', (conn) => {
+      infoIphone.innerHTML = `iPhone connecté (code ${code}) — bats la mesure !`;
+      conn.on('data', (d) => {
+        if (d && d.type === 'ictus') {
+          amplitude = 0.05 + 0.3 * Math.min(1, Math.max(0, d.force));
+          appliquerAmplitude(amplitude);
+          ictus(audio.currentTime);
+        }
+      });
+      conn.on('close', () => { infoIphone.textContent = `iPhone déconnecté (code ${code} toujours valable)`; });
+    });
+    peer.on('error', (e) => { infoIphone.textContent = 'Erreur : ' + e.type; btnIphone.disabled = false; });
+  } catch (e) {
+    infoIphone.textContent = 'Erreur : ' + e.message;
+    btnIphone.disabled = false;
+  }
+});
 
 addEventListener('keydown', (e) => {
   if (e.code === 'Space') { e.preventDefault(); reveilAudio(); amplitude = 0; ictus(audio.currentTime); }
