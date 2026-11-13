@@ -56,7 +56,7 @@ def convertir(chemin):
             continue
         divisions = 1
         transpo = 0
-        octave_reelle = -12 if nom == 'Contrabbasso' else 0  # la contrebasse sonne une octave plus bas
+        octave_reelle = -12 if nom == 'Contrabbasso' else 0  # contrebasse : une octave plus bas, si le fichier ne le dit pas
         nuance = 0.38
         en_cours = {}      # liaisons : hauteur -> note
         notes = []
@@ -113,7 +113,8 @@ def convertir(chemin):
                         continue
                     p = el.find('pitch')
                     hauteur = (12 * (int(p.findtext('octave')) + 1) + PAS[p.findtext('step')]
-                               + int(float(p.findtext('alter') or 0)) + transpo + octave_reelle)
+                               + int(float(p.findtext('alter') or 0)) + transpo
+                               + (octave_reelle if transpo == 0 else 0))
                     t0 = debut / divisions + decalage
                     if t0 >= temps_par_mesure - 1e-6:
                         continue
@@ -141,7 +142,7 @@ def convertir(chemin):
 
     return {
         'titre': 'Gabriel Fauré — Pavane, op. 50',
-        'source': 'CPDL (édition Finale), reconnue automatiquement puis corrigée',
+        'source': 'CPDL (édition Finale), lue dans le PDF par outils/pdf_vers_musicxml.py',
         'tempsParMesure': temps_par_mesure,
         'mesures': nb_mesures,
         'tempoIndique': 80,
