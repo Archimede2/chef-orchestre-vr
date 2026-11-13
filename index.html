@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chef d'orchestre VR — Proto 1 : battue</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #101018; overflow: hidden; font-family: system-ui, sans-serif; }
+  #aide {
+    position: absolute; top: 12px; left: 12px; max-width: 420px;
+    color: #e8e6df; background: rgba(0,0,0,.6); padding: 12px 14px; border-radius: 8px;
+    font-size: 14px; line-height: 1.45;
+  }
+  #aide b { color: #ffd27a; }
+</style>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+  }
+}
+</script>
+</head>
+<body>
+<div id="aide">
+  <b>Proto 1 — la battue</b><br>
+  Dans le casque : la manette droite est la baguette. Bats deux temps à vide,
+  l'orchestre (ici un métronome) part sur le troisième. Arrête de battre :
+  il ralentit, se décale, puis s'arrête.<br>
+  Sur l'ordinateur : <b>Espace</b> = un temps, <b>souris</b> = orientation de la tête.
+</div>
+<script type="module" src="./main.js"></script>
+</body>
+</html>
