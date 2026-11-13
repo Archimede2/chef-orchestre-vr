@@ -1,10 +1,11 @@
-// Chef d'orchestre VR — Proto 1 : la battue
-// Objectif : détecter la battue à la manette droite, faire partir un métronome
-// sur la 3e battue (levée), suivre le tempo, puis ralentir et s'arrêter si
-// le chef arrête de battre. Bonus : regard par la tête sur les pupitres.
+// Chef d'orchestre VR — Proto 2 : la Pavane de Fauré
+// La battue (manette droite) donne le tempo ; l'orchestre part sur la 3e battue
+// (levée), ralentit et s'arrête si le chef arrête de battre. L'amplitude du
+// geste règle la nuance, et le pupitre regardé joue un peu plus fort.
 
 import * as THREE from 'three';
 import { VRButton } from 'three/addons/webxr/VRButton.js';
+import { Orchestre } from './orchestre.js';
 
 // ---------------------------------------------------------------- Réglages
 const REGLAGES = {
@@ -17,6 +18,8 @@ const REGLAGES = {
   tempsSansBattue: 3,      // temps sans battue avant ralenti
   tempsRalenti: 3,         // temps de ralenti avant arrêt
   angleRegard: 14,         // degrés : cône de visée de la tête
+  bonusRegard: 0.5,        // +50 % de volume pour le pupitre regardé
+  decalageRalenti: 0.12,   // s : désordre des pupitres pendant le ralenti
 };
 
 // ---------------------------------------------------------------- Scène
@@ -91,7 +94,7 @@ function carton(nom) {
   );
   pied.position.y = -0.5;
   groupe.add(pied, panneau);
-  return { nom, groupe, panneau, attention: 0 };
+  return { nom, groupe, panneau, attention: 0, activite: 0 };
 }
 
 const pupitres = [];
@@ -109,6 +112,7 @@ function placerEnArc(noms, rayon, hauteur, ouvertureDeg) {
 placerEnArc(['Violons I', 'Violons II', 'Altos', 'Violoncelles', 'Contrebasses'], 2.6, 1.2, 120);
 placerEnArc(['Flûtes', 'Hautbois', 'Clarinettes', 'Bassons'], 4.0, 1.6, 60);
 placerEnArc(['Cors'], 5.2, 2.0, 0);
+const pupitreParNom = new Map(pupitres.map((p) => [p.nom, p]));
 
 // ---------------------------------------------------------------- Panneau d'infos
 const hudCanvas = document.createElement('canvas');
@@ -161,6 +165,25 @@ function clic(quand, freq, fort = 0.4) {
   o.stop(quand + 0.1);
 }
 
+// ---------------------------------------------------------------- Orchestre
+const orchestre = new Orchestre(audio);
+let chargement = 'Chargement de la partition…';
+{
+  const positions = {};
+  for (const p of pupitres) positions[p.nom] = p.groupe.position.clone();
+  orchestre.charger('./partitions/pavane.json', positions, (faits, total) => {
+    chargement = `Chargement des sons : ${faits} / ${total}`;
+  }).then(() => { chargement = ''; })
+    .catch((e) => { chargement = 'Erreur de chargement : ' + e.message; console.error(e); });
+}
+
+// Nuance donnée par l'amplitude du geste (petit = piano, grand = forte)
+let gainGeste = 1;
+function gainPupitre(nom) {
+  const p = pupitreParNom.get(nom);
+  return gainGeste * (1 + REGLAGES.bonusRegard * (p ? p.attention : 0));
+}
+
 // ---------------------------------------------------------------- Baguette (manette droite)
 const baguette = new THREE.Group();
 const tige = new THREE.Mesh(
@@ -210,6 +233,9 @@ function suivreBaguette(t, dt) {
     if (t - dernierIctus > REGLAGES.intervalleMin) {
       amplitude = Math.max(0, yHaut - posPointe.y);
       yHaut = posPointe.y;
+      // 5 cm -> piano (x0,6) ; 35 cm et plus -> forte (x1,3)
+      const cible = 0.6 + 0.7 * Math.min(1, Math.max(0, (amplitude - 0.05) / 0.3));
+      gainGeste += (cible - gainGeste) * 0.5;
       ictus(t);
     }
   }
@@ -221,6 +247,8 @@ addEventListener('keydown', (e) => {
 
 // ---------------------------------------------------------------- Le « chef » : levée, tempo, arrêt
 let etat = 'attente';        // attente | jeu | ralenti
+let tempsDepart = 0;          // temps de partition où l'orchestre repart
+let evenementsVisuels = [];   // [instant, pupitre, intensité] pour animer les cartons
 let leveeTemps = [];          // instants des battues à vide
 let periode = 0.8;            // s par temps
 let prochainTemps = 0;        // instant du prochain temps programmé
@@ -246,7 +274,7 @@ function ictus(t) {
     const ecarts = leveeTemps.slice(1).map((v, i) => v - leveeTemps[i]);
     periode = ecarts.reduce((a, b) => a + b, 0) / ecarts.length;
     etat = 'jeu';
-    tempsJoues = 0;
+    tempsJoues = tempsDepart;
     leveeTemps = [];
     prochainTemps = t;
     ictus.dernier = t;
@@ -274,10 +302,24 @@ function programmer() {
   while (etat !== 'attente' && prochainTemps < maintenant + 0.1) {
     let quand = Math.max(prochainTemps, maintenant);
     if (etat === 'ralenti') quand += (Math.random() - 0.5) * 0.06; // le décalage
-    const premier = tempsJoues === 0;
-    clic(quand, premier ? 1320 : 990, premier ? 0.5 : 0.35);
+    if (orchestre.pret) {
+      evenementsVisuels.push(...orchestre.jouerTemps(tempsJoues, quand, periode, {
+        gain: gainPupitre,
+        decalage: etat === 'ralenti' ? REGLAGES.decalageRalenti : 0,
+      }));
+    } else {
+      clic(quand, tempsJoues === tempsDepart ? 1320 : 990, 0.35);
+    }
     tempsProgrammes.push(quand);
     tempsJoues++;
+
+    // Fin du morceau
+    if (orchestre.pret && tempsJoues >= orchestre.totalTemps) {
+      etat = 'attente';
+      tempsDepart = 0;
+      ictus.dernier = undefined;
+      break;
+    }
 
     if (etat === 'jeu' && prochainTemps - dernierIctus > periode * REGLAGES.tempsSansBattue) {
       etat = 'ralenti';
@@ -288,6 +330,10 @@ function programmer() {
       periode *= 1.15;
       if (tempsRalentiFaits >= REGLAGES.tempsRalenti) {
         etat = 'attente';
+        orchestre.couper();
+        // On reprendra au début de la mesure interrompue
+        const tpm = orchestre.partition?.tempsParMesure || 4;
+        tempsDepart = Math.floor(tempsJoues / tpm) * tpm;
         ictus.dernier = undefined;
         break;
       }
@@ -319,7 +365,7 @@ function suivreRegard(dt) {
     p.attention += (cible - p.attention) * Math.min(1, dt * vitesse);
     const l = 0.35 + 0.65 * p.attention;
     p.panneau.material.color.setRGB(l, l, l);
-    p.groupe.scale.setScalar(1 + 0.12 * p.attention);
+    p.groupe.scale.setScalar(1 + 0.12 * p.attention + 0.1 * p.activite);
   }
 }
 
@@ -337,6 +383,8 @@ addEventListener('resize', () => {
 });
 
 // ---------------------------------------------------------------- Boucle
+const hautTete = new THREE.Vector3();
+const quatTete = new THREE.Quaternion();
 const NOMS_ETAT = { attente: 'En attente de la levée', jeu: 'L’orchestre joue', ralenti: 'Ralenti, puis arrêt' };
 let tPrec = audio.currentTime;
 let tHorloge = performance.now();
@@ -361,15 +409,36 @@ renderer.setAnimationLoop(() => {
   anneau.material.opacity = 0.15 + 0.85 * pulseAnneau;
   anneau.scale.setScalar(1 + 0.15 * pulseAnneau);
 
+  // Les cartons s'animent quand leur pupitre joue
+  evenementsVisuels.sort((a, b) => a[0] - b[0]);
+  while (evenementsVisuels.length && evenementsVisuels[0][0] <= t) {
+    const [, nom, intensite] = evenementsVisuels.shift();
+    const p = pupitreParNom.get(nom);
+    if (p) p.activite = Math.min(1, p.activite + 0.5 + intensite);
+  }
+  for (const p of pupitres) p.activite = Math.max(0, p.activite - dt * 4);
+  if (etat === 'attente' && evenementsVisuels.length && evenementsVisuels[0][0] > t + 1) evenementsVisuels = [];
+
+  // L'oreille suit la tête
+  {
+    const cam = renderer.xr.isPresenting ? renderer.xr.getCamera() : camera;
+    cam.getWorldPosition(posTete);
+    cam.getWorldDirection(dirTete);
+    hautTete.set(0, 1, 0).applyQuaternion(cam.getWorldQuaternion(quatTete));
+    orchestre.ecouter(posTete, dirTete, hautTete);
+  }
+
   flashPointe = Math.max(0, flashPointe - dt * 6);
   pointe.material.color.setRGB(1, 1 - 0.6 * flashPointe, 1 - flashPointe);
   pointe.scale.setScalar(1 + 1.5 * flashPointe);
 
+  const tpm = orchestre.partition?.tempsParMesure || 4;
+  const mesure = Math.floor(Math.max(0, tempsJoues - 1) / tpm) + 1;
   const leveeTxt = etat === 'attente'
-    ? `Levée : ${leveeTemps.length} / ${REGLAGES.tempsLeveeAvantDepart} battues à vide`
-    : `Temps joués : ${tempsJoues}`;
+    ? `Levée : ${leveeTemps.length} / ${REGLAGES.tempsLeveeAvantDepart} battues à vide — départ mesure ${Math.floor(tempsDepart / tpm) + 1}`
+    : `Mesure ${mesure} / ${orchestre.partition?.mesures ?? '?'}   Nuance : x${gainGeste.toFixed(2)}`;
   majHud([
-    NOMS_ETAT[etat],
+    chargement || NOMS_ETAT[etat],
     `Tempo : ${etat === 'attente' ? '—' : Math.round(60 / periode) + ' BPM'}`,
     leveeTxt,
     `Décalage geste / temps : ${etat === 'attente' ? '—' : decalageMs + ' ms'}   Amplitude : ${Math.round(amplitude * 100)} cm`,
