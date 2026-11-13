@@ -76,7 +76,12 @@ $('go').onclick = async () => {
   try {
     if (typeof DeviceMotionEvent !== 'undefined' && DeviceMotionEvent.requestPermission) {
       const r = await DeviceMotionEvent.requestPermission();
-      if (r !== 'granted') { $('etat').textContent = 'Accès aux mouvements refusé.'; return; }
+      if (r !== 'granted') {
+        $('etat').innerHTML = 'Accès aux mouvements refusé.<br><small>Safari retient ce refus : ouvre cette page dans un onglet de ' +
+          '<b>navigation privée</b>, ou efface les données du site (Réglages › Apps › Safari › Avancé › ' +
+          'Données de sites › github.io), puis réessaie et choisis <b>Autoriser</b>.</small>';
+        return;
+      }
     }
     window.addEventListener('devicemotion', mouvement);
   } catch (e) {
