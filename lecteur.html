@@ -45,8 +45,8 @@
 <body>
 <header>
   <h1>Lecteur de partition</h1>
-  <button id="btnOuvrir">Ouvrir un MusicXML…</button>
-  <input id="fichier" type="file" accept=".musicxml,.xml" style="display:none">
+  <button id="btnOuvrir">Ouvrir un fichier…</button>
+  <input id="fichier" type="file" accept=".musicxml,.xml,.mid,.midi" style="display:none">
   <button id="btnSon" class="principal">Activer le son</button>
   <button id="btnWebcam">Webcam (2 mains)</button>
   <button id="btnIphoneL">iPhone</button>
@@ -63,10 +63,12 @@
   <div id="zoneScore">
     <div id="accueil">
       <b>Chef d'orchestre — lecteur pour compositeurs et arrangeurs.</b><br><br>
-      Glisse ici un fichier MusicXML (ou bouton « Ouvrir »), clique sur « Activer le son »,
+      Glisse ici un fichier <b>MusicXML</b> ou <b>MIDI</b> (ou bouton « Ouvrir »), clique sur « Activer le son »,
       puis bats la mesure : <b>Espace</b>, la <b>webcam</b> (main droite = battue,
       main gauche = nuance) ou l'<b>iPhone</b>.<br><br>
-      Deux battues à vide, la musique part sur la troisième et suit ton tempo.
+      Deux battues à vide, la musique part sur la troisième et suit ton tempo.<br><br>
+      Un MIDI ne contient pas de gravure : la partition ne s'affiche pas, mais la lecture
+      et le numéro de mesure fonctionnent. C'est la bonne voie pour les grosses œuvres.<br><br>
       La Pavane de Fauré se charge par défaut…
     </div>
     <div id="score"></div>
@@ -92,8 +94,8 @@
     </div>
   </aside>
 </main>
-<div id="glisser">Dépose ton fichier MusicXML</div>
+<div id="glisser">Dépose ton fichier MusicXML ou MIDI</div>
 <script src="https://cdn.jsdelivr.net/npm/opensheetmusicdisplay@1.8.4/build/opensheetmusicdisplay.min.js"></script>
-<script type="module" src="./lecteur.js?v=1"></script>
+<script type="module" src="./lecteur.js?v=2"></script>
 </body>
 </html>

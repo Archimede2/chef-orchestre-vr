@@ -22,6 +22,11 @@ Version sans 3D, pensée pour le Mac : https://archimede2.github.io/chef-orchest
 - Battue : Espace, webcam (MediaPipe, main droite = battue, main gauche = nuance) ou iPhone (baguette.html).
 - Solo / muet par pupitre ; réglage « avance » pour compenser le retard de la caméra.
 - Conversion MusicXML -> partition de jeu faite dans le navigateur (portage JS de convertir_musicxml.py).
+- **Fichiers MIDI (.mid) lus directement** (`midi.js`) : pas de partition affichée, mais c'est la bonne voie
+  pour les grosses œuvres — un MIDI de quelques centaines de Ko remplace un MusicXML de dizaines de Mo.
+  Les ticks MIDI se comptent déjà en fractions de noire, donc la battue pilote le tempo sans conversion.
+  Le canal 10 (percussions GM) est créé en muet.
+- Au-delà de 6 Mo de MusicXML, la partition n'est plus affichée mais la lecture continue.
 - Plus tard : sortie MIDI vers Logic et les instruments virtuels.
 
 ## Fichiers
@@ -29,6 +34,7 @@ Version sans 3D, pensée pour le Mac : https://archimede2.github.io/chef-orchest
 - `main.js` : scène, battue, regard, logique du chef.
 - `orchestre.js` : chargement des sons et lecture de la partition.
 - `lecteur.html` + `lecteur.js` : lecteur de partition (voir ci-dessus).
+- `midi.js` : lecture d'un fichier MIDI vers le même format de partition de jeu.
 - `partitions/pavane.json` : partition de jeu (notes en temps de battue).
 - `outils/pdf_vers_musicxml.py` : lit une partition PDF exportée par Finale et écrit le MusicXML.
 - `outils/convertir_musicxml.py` : conversion MusicXML -> partition de jeu.

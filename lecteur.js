@@ -4,6 +4,7 @@
 // Même logique de chef que le jeu VR : levée, suivi du tempo, ralenti, arrêt.
 
 import { Orchestre } from './orchestre.js?v=5';
+import { lireMIDI, sonGM } from './midi.js?v=1';
 
 const $ = (id) => document.getElementById(id);
 
@@ -23,16 +24,6 @@ const REG = {
 // notes par pupitre en temps de battue (noires), nuances, liaisons, pizz/arco par indication.
 const NUANCES = { ppp: 0.15, pp: 0.25, p: 0.38, mp: 0.5, mf: 0.62, f: 0.75, ff: 0.88, fff: 1.0, sf: 0.8, sfz: 0.8, fp: 0.75 };
 const PAS = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
-// Programme General MIDI (1 à 128) -> son de la banque FluidR3
-const GM = {
-  1: 'acoustic_grand_piano', 7: 'harpsichord', 20: 'church_organ', 25: 'acoustic_guitar_nylon',
-  41: 'violin', 42: 'viola', 43: 'cello', 44: 'contrabass', 45: 'tremolo_strings',
-  46: 'pizzicato_strings', 47: 'orchestral_harp', 48: 'timpani',
-  49: 'string_ensemble_1', 50: 'string_ensemble_2', 51: 'synth_strings_1',
-  53: 'choir_aahs', 54: 'voice_oohs', 57: 'trumpet', 58: 'trombone', 59: 'tuba',
-  61: 'french_horn', 69: 'oboe', 70: 'english_horn', 71: 'bassoon', 72: 'clarinet',
-  73: 'piccolo', 74: 'flute', 75: 'recorder',
-};
 const CORDES = new Set(['violin', 'viola', 'cello', 'contrabass', 'string_ensemble_1', 'string_ensemble_2', 'tremolo_strings']);
 const MOTS_SONS = [
   [/picc|ottavino/i, 'piccolo'], [/fl[uû]te|flauto|\bfl\b/i, 'flute'],
@@ -48,7 +39,7 @@ const MOTS_SONS = [
 ];
 
 function sonPour(nom, prog) {
-  if (prog && GM[prog]) return GM[prog];
+  if (prog && sonGM(prog)) return sonGM(prog);
   for (const [re, son] of MOTS_SONS) if (re.test(nom)) return son;
   return 'string_ensemble_1';
 }
@@ -191,6 +182,9 @@ let orchestre = null;
 let partition = null;
 let osmd = null;
 let cursorMes = 0;
+let partitionAffichee = false;
+let curseurOsmd = 0;          // position du curseur OSMD, distincte de la mesure affichée
+const LIMITE_AFFICHAGE = 6e6; // caractères : au-delà, l'affichage de la partition ne tient pas
 
 let etat = 'attente';      // attente | jeu | ralenti
 let leveeTemps = [];
@@ -333,33 +327,79 @@ function programmer() {
 }
 
 // ---------------------------------------------------------------- Partition (OSMD + sons)
-async function chargerXML(texte, nomFichier) {
+async function chargerFichier(f) {
+  if (/\.(mid|midi)$/i.test(f.name)) return chargerMIDI(await f.arrayBuffer(), f.name);
+  return chargerXML(await f.text(), f.name);
+}
+
+async function chargerMIDI(buffer, nomFichier) {
   try {
-    statut('Lecture de la partition…');
-    const p = convertirMusicXML(texte, nomFichier);
-    // Arrêt propre de l'ancienne lecture
-    orchestre?.couper();
-    orchestre = null;
-    partition = p;
-    etat = 'attente'; leveeTemps = []; tempsDepart = 0; tempsProgrammes.length = 0; cursorMes = 0;
-    $('accueil').style.display = 'none';
-    construirePupitres();
-    document.title = `${p.titre} — Lecteur`;
-    statut('Affichage de la partition…');
-    if (!osmd) {
-      osmd = new opensheetmusicdisplay.OpenSheetMusicDisplay($('score'), {
-        autoResize: true, drawTitle: true, drawingParameters: 'compacttight', followCursor: false,
-      });
-    }
-    await osmd.load(texte);
-    osmd.render();
-    try { osmd.cursor.show(); } catch (e) { /* pas bloquant */ }
-    statut('');
-    if (audio) await chargerSons();
+    statut('Lecture du MIDI…');
+    await nouvellePartition(lireMIDI(buffer, nomFichier), null);
   } catch (e) {
     console.error(e);
     statut('Erreur : ' + e.message);
   }
+}
+
+async function chargerXML(texte, nomFichier) {
+  try {
+    statut('Lecture de la partition…');
+    await nouvellePartition(convertirMusicXML(texte, nomFichier), texte);
+  } catch (e) {
+    console.error(e);
+    statut('Erreur : ' + e.message);
+  }
+}
+
+function sansPartition(message) {
+  const n = partition.pupitres.reduce((t, q) => t + q.notes.length, 0);
+  $('score').innerHTML = `<div id="accueilBis" style="color:#555;padding:40px;max-width:560px">
+    <b>${partition.titre}</b><br><br>${message}<br><br>
+    ${partition.pupitres.length} pupitres, ${n.toLocaleString('fr-FR')} notes,
+    ${partition.mesures} mesures à ${partition.tempsParMesure} temps.<br>
+    Le numéro de mesure en haut à droite suit la lecture.</div>`;
+}
+
+async function nouvellePartition(p, texteXML) {
+  orchestre?.couper();
+  orchestre = null;
+  partition = p;
+  etat = 'attente'; leveeTemps = []; tempsDepart = 0; tempsProgrammes.length = 0;
+  cursorMes = 0; curseurOsmd = 0;
+  $('accueil').style.display = 'none';
+  construirePupitres();
+  document.title = `${p.titre} — Lecteur`;
+
+  partitionAffichee = false;
+  try { osmd?.clear(); } catch (e) { /* sans importance */ }
+  osmd = null;
+  $('score').innerHTML = '';
+
+  if (texteXML && texteXML.length <= LIMITE_AFFICHAGE) {
+    statut('Affichage de la partition…');
+    await new Promise((r) => setTimeout(r, 0)); // laisse le message s'afficher
+    try {
+      osmd = new opensheetmusicdisplay.OpenSheetMusicDisplay($('score'), {
+        autoResize: true, drawTitle: true, drawingParameters: 'compacttight', followCursor: false,
+      });
+      await osmd.load(texteXML);
+      osmd.render();
+      try { osmd.cursor.show(); } catch (e) { /* le son prime sur le curseur */ }
+      partitionAffichee = true;
+    } catch (e) {
+      console.error(e);
+      osmd = null;
+      sansPartition(`La partition n'a pas pu être affichée (${e.message}), mais la lecture fonctionne.`);
+    }
+  } else if (texteXML) {
+    sansPartition(`Fichier trop lourd pour afficher la partition
+      (${(texteXML.length / 1e6).toFixed(0)} Mo). Lecture seule.`);
+  } else {
+    sansPartition(`Un fichier MIDI ne contient pas de gravure : il n'y a pas de partition à afficher.`);
+  }
+  statut('');
+  if (audio) await chargerSons();
 }
 
 async function chargerSons() {
@@ -386,6 +426,7 @@ function construirePupitres() {
     const m = document.createElement('input'); m.type = 'checkbox'; m.title = 'Muet';
     s.onchange = () => { s.checked ? solos.add(p.nom) : solos.delete(p.nom); };
     m.onchange = () => { m.checked ? muets.add(p.nom) : muets.delete(p.nom); };
+    if (p.percussion) { m.checked = true; muets.add(p.nom); } // la batterie GM sonne mal : muette par défaut
     const nom = document.createElement('span');
     nom.textContent = `${p.nom} (${p.notes.length})`;
     rang.append(s, m, nom);
@@ -394,14 +435,14 @@ function construirePupitres() {
 }
 
 function placerCurseur(mes) {
-  if (!osmd?.cursor) return;
+  if (!partitionAffichee || !osmd?.cursor) return;
   try {
     const c = osmd.cursor;
     const it = () => c.Iterator || c.iterator;
-    if (mes < cursorMes) { c.reset(); cursorMes = 0; }
+    if (mes < curseurOsmd) { c.reset(); curseurOsmd = 0; }
     let garde = 0;
     while (!it().EndReached && it().CurrentMeasureIndex < mes && garde++ < 20000) c.next();
-    cursorMes = mes;
+    curseurOsmd = mes;
     c.update?.();
     c.cursorElement?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   } catch (e) { /* le son prime sur le curseur */ }
@@ -564,9 +605,9 @@ $('btnIphoneL').addEventListener('click', async () => {
 
 // ---------------------------------------------------------------- Interface
 $('btnOuvrir').addEventListener('click', () => $('fichier').click());
-$('fichier').addEventListener('change', async (e) => {
+$('fichier').addEventListener('change', (e) => {
   const f = e.target.files[0];
-  if (f) chargerXML(await f.text(), f.name);
+  if (f) chargerFichier(f);
 });
 $('btnSon').addEventListener('click', () => { ensureAudio(); $('btnSon').textContent = 'Son actif'; });
 $('btnWebcam').addEventListener('click', () => { ensureAudio(); demarrerWebcam(); });
@@ -587,8 +628,8 @@ addEventListener('drop', async (e) => {
   e.preventDefault();
   $('glisser').style.display = 'none';
   const f = e.dataTransfer.files[0];
-  if (f && /\.(musicxml|xml)$/i.test(f.name)) chargerXML(await f.text(), f.name);
-  else statut('Dépose un fichier .musicxml ou .xml');
+  if (f && /\.(musicxml|xml|mid|midi)$/i.test(f.name)) chargerFichier(f);
+  else statut('Dépose un fichier .musicxml, .xml, .mid ou .midi');
 });
 
 // ---------------------------------------------------------------- Boucle d'affichage
@@ -602,7 +643,7 @@ function boucle() {
     while (tempsProgrammes.length && tempsProgrammes[0].quand <= audio.currentTime) {
       const { temps } = tempsProgrammes.shift();
       const mes = mesureDe(temps);
-      if (mes !== cursorMes || temps === 0) placerCurseur(mes);
+      if (mes !== cursorMes) { cursorMes = mes; placerCurseur(mes); }
     }
   }
   // HUD
