@@ -574,6 +574,11 @@ let landmarker = null;
 let webcamActive = false;
 const droite = { yPrec: null, vy: 0, desc: false, yHaut: 1, tPrec: 0 };
 
+// Point de battue : le bas du geste, posé par l'utilisateur dans l'image.
+// Toutes les battues y passent, quelle que soit la métrique : chaque passage
+// est un temps, et c'est l'unité de battue (metrique.js) qui dit ce qu'il vaut.
+const point = { x: 0.5, y: 0.78, delta: 0.07, armee: true, flash: 0, sommet: 1 };
+
 async function demarrerWebcam() {
   if (webcamActive) return;
   $('btnWebcam').disabled = true;
@@ -635,14 +640,17 @@ function traiterMains(res) {
 }
 
 function mainDroite(lm) {
+  const x = lm[8].x;
   const y = lm[8].y; // bout de l'index ; y augmente vers le bas
   const t = performance.now() / 1000;
 
   // Geste circulaire : coupure. Le préavis empêche le cercle de compter des temps.
   cercle.reglerFenetre(dureeMesure());
-  const g = cercle.ajouter(lm[8].x, lm[8].y, t);
-  if (g.arret) { ensureAudio(); couperParCercle(); droite.desc = false; return; }
+  const g = cercle.ajouter(x, y, t);
+  if (g.arret) { ensureAudio(); couperParCercle(); droite.desc = false; point.armee = false; return; }
   if (g.preavis) { droite.desc = false; droite.yPrec = y; droite.tPrec = t; return; }
+
+  if ($('modePoint').checked) { battreSurPoint(x, y); return; }
 
   const dt = t - droite.tPrec;
   droite.tPrec = t;
@@ -665,6 +673,32 @@ function mainDroite(lm) {
   }
 }
 
+// Distance au point, en hauteurs d'image (l'horizontale est remise à l'échelle
+// pour que le delta soit un vrai cercle à l'écran et pas une ellipse).
+function distanceAuPoint(x, y) {
+  const v = $('video');
+  const asp = (v.videoWidth || 16) / (v.videoHeight || 9);
+  return Math.hypot((x - point.x) * asp, y - point.y);
+}
+
+function battreSurPoint(x, y) {
+  if (y < point.sommet) point.sommet = y; // on retient le haut du geste pour la nuance
+  const d = distanceAuPoint(x, y);
+  if (d <= point.delta) {
+    if (!point.armee) return;
+    point.armee = false;
+    point.flash = performance.now();
+    ensureAudio();
+    const amplitude = Math.max(0, point.y - point.sommet); // hauteur du geste au-dessus du point
+    point.sommet = y;
+    // 4 % de la hauteur d'image -> piano ; 40 % et plus -> forte
+    const cible = 0.6 + 0.7 * Math.min(1, Math.max(0, (amplitude - 0.04) / 0.36));
+    ictus(audio.currentTime - (+$('avance').value) / 1000, cible);
+  } else if (d > point.delta * 1.35) {
+    point.armee = true; // il faut ressortir avant de pouvoir rebattre
+  }
+}
+
 function mainGauche(lm) {
   gaucheVue = performance.now();
   const y = lm[0].y; // poignet
@@ -679,6 +713,17 @@ function dessinerMains(res) {
   if (c.width !== video.videoWidth) { c.width = video.videoWidth; c.height = video.videoHeight; }
   const g = c.getContext('2d');
   g.clearRect(0, 0, c.width, c.height);
+
+  if ($('modePoint').checked) {
+    const r = point.delta * c.height;
+    const px = point.x * c.width, py = point.y * c.height;
+    const vif = performance.now() - point.flash < 120;
+    g.strokeStyle = vif ? '#ffd27a' : (point.armee ? 'rgba(255,210,122,.55)' : 'rgba(255,255,255,.3)');
+    g.lineWidth = vif ? 5 : 2.5;
+    g.beginPath(); g.arc(px, py, r, 0, Math.PI * 2); g.stroke();
+    g.beginPath(); g.moveTo(px - 9, py); g.lineTo(px + 9, py);
+    g.moveTo(px, py - 9); g.lineTo(px, py + 9); g.stroke();
+  }
   const mains = res.handednesses || res.handedness || [];
   const inv = $('invG').checked;
   for (let i = 0; i < (res.landmarks || []).length; i++) {
@@ -749,6 +794,25 @@ $('avance').addEventListener('input', () => { $('avanceV').textContent = $('avan
     sel.appendChild(o);
   }
   sel.addEventListener('change', () => { uniteManuelle = parseFloat(sel.value) || 0; });
+}
+$('delta').addEventListener('input', () => {
+  point.delta = +$('delta').value;
+  $('deltaV').textContent = `${Math.round(point.delta * 100)} % de la hauteur`;
+});
+{
+  // Poser le point de battue : cliquer ou glisser dans l'image (qui est en miroir)
+  const cadre = $('cadreVideo');
+  let pose = false;
+  const placer = (e) => {
+    const r = cadre.getBoundingClientRect();
+    point.x = Math.min(1, Math.max(0, 1 - (e.clientX - r.left) / r.width));
+    point.y = Math.min(1, Math.max(0, (e.clientY - r.top) / r.height));
+    point.armee = true;
+  };
+  cadre.addEventListener('pointerdown', (e) => { pose = true; cadre.setPointerCapture(e.pointerId); placer(e); });
+  cadre.addEventListener('pointermove', (e) => { if (pose) placer(e); });
+  cadre.addEventListener('pointerup', () => { pose = false; });
+  cadre.addEventListener('pointercancel', () => { pose = false; });
 }
 $('seuilCercle').addEventListener('input', () => {
   cercle.toursArret = +$('seuilCercle').value;

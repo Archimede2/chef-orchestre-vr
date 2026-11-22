@@ -27,6 +27,10 @@ Version sans 3D, pensée pour le Mac : https://archimede2.github.io/chef-orchest
 - **Frise en haut de la partition** : cliquer ou glisser pour aller à n'importe quelle mesure
   (fonctionne aussi sans partition affichée, pour un MIDI).
 - **Cercle de la main droite = coupure** (webcam seulement : l'iPhone n'envoie que les temps).
+- **Point de battue** : on pose dans l'image, d'un clic, le bas de sa battue. Chaque passage dans le
+  cercle donne un temps, quelle que soit la métrique ; le rayon (« delta ») est réglable, et il faut
+  ressortir du cercle avant de pouvoir rebattre. La hauteur atteinte entre deux temps donne la nuance.
+  Sans ce mode, le temps est repéré au creux du geste (détection par la vitesse).
 - Conversion MusicXML -> partition de jeu faite dans le navigateur (portage JS de convertir_musicxml.py).
 - **Fichiers MIDI (.mid) lus directement** (`midi.js`) : pas de partition affichée, mais c'est la bonne voie
   pour les grosses œuvres — un MIDI de quelques centaines de Ko remplace un MusicXML de dizaines de Mo.

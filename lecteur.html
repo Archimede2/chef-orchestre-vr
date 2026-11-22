@@ -38,7 +38,7 @@
   aside h2 { font-size: 13px; margin: 0 0 6px; color: var(--accent); text-transform: uppercase; letter-spacing: .5px; }
   #jauge { height: 5px; background: #2c2c3a; border-radius: 3px; margin-top: 6px; overflow: hidden; }
   #cercleEl { height: 100%; width: 0; background: var(--accent); transition: width .08s linear; }
-  #cadreVideo { position: relative; width: 100%; aspect-ratio: 16/9; background: #000; border-radius: 8px; overflow: hidden; }
+  #cadreVideo { cursor: crosshair; touch-action: none; position: relative; width: 100%; aspect-ratio: 16/9; background: #000; border-radius: 8px; overflow: hidden; }
   #video, #calque { position: absolute; inset: 0; width: 100%; height: 100%; transform: scaleX(-1); }
   #calque { object-fit: contain; }
   label.ligne { display: flex; align-items: center; gap: 8px; font-size: 13px; margin: 4px 0; }
@@ -97,10 +97,18 @@
       <div id="cadreVideo"><video id="video" autoplay playsinline muted></video><canvas id="calque"></canvas></div>
       <div id="jauge"><div id="cercleEl"></div></div>
       <label class="ligne"><input type="checkbox" id="invG" checked> Inverser gauche / droite</label>
+      <label class="ligne"><input type="checkbox" id="modePoint" checked> Battre sur un point</label>
+      <label class="ligne">Delta <input type="range" id="delta" min="0.02" max="0.25" step="0.01" value="0.07"> <span id="deltaV">7 % de la hauteur</span></label>
       <label class="ligne">Sensibilité <input type="range" id="seuilCam" min="0.4" max="3" step="0.1" value="1.0"></label>
       <label class="ligne">Avance <input type="range" id="avance" min="0" max="200" step="10" value="100"> <span id="avanceV">100 ms</span></label>
       <label class="ligne">Cercle <input type="range" id="seuilCercle" min="0.6" max="1.2" step="0.05" value="0.9"> <span id="seuilCercleV">90 % de tour</span></label>
-      <div class="petit">Point orange = main de la battue (temps au bas du geste). Point bleu = main gauche :
+      <div class="petit"><b>Clique dans l'image pour poser le point de battue</b> : le cercle orange marque
+        le bas de ta battue. Chaque passage dedans donne un temps, quelle que soit la métrique, et c'est lui
+        qui fixe le tempo. « Delta » règle son rayon ; il faut ressortir du cercle avant de pouvoir rebattre.
+        Plus ta main remonte haut entre deux temps, plus l'orchestre joue fort.<br>
+        Sans « Battre sur un point », le temps est repéré au creux du geste, et « Sensibilité » règle la
+        vitesse de descente nécessaire.<br>
+        Point orange = main de la battue. Point bleu = main gauche :
         plus elle est haute, plus l'orchestre joue fort. « Avance » compense le retard de la caméra.<br>
         <b>Pour couper l'orchestre, décris un cercle</b> avec la main de la battue, franchement et en moins
         d'une seconde. La barre sous l'image montre où en est le tour. Le cercle doit toujours être bouclé
@@ -127,6 +135,6 @@
 </main>
 <div id="glisser">Dépose ton fichier MusicXML ou MIDI</div>
 <script src="https://cdn.jsdelivr.net/npm/opensheetmusicdisplay@1.8.4/build/opensheetmusicdisplay.min.js"></script>
-<script type="module" src="./lecteur.js?v=4"></script>
+<script type="module" src="./lecteur.js?v=5"></script>
 </body>
 </html>
