@@ -69,6 +69,18 @@ Garde-fou : la fenêtre se cale sur la durée de la mesure en cours, donc le cer
 être bouclé nettement plus vite qu'une mesure. Sans cela, une battue à 3 temps ronde et rapide
 finirait par boucler un tour par mesure et couperait toute seule.
 
+## Grosses partitions
+
+Testé sur la suite de *L'Oiseau de feu* (MuseScore, 25 Mo, 570 mesures, 29 portées,
+21 changements de mesure) : conversion en 4 s, 31 957 notes, aucune note hors du morceau,
+et la battue tombe pile sur la dernière mesure. La gravure n'est pas affichée au-delà de
+6 Mo ; la frise et le compteur de mesures restent utilisables.
+
+Deux détails sur ce genre de fichier : les portées de percussion non mélodiques
+(`<unpitched>`) sont ignorées, faute de banque de batterie utilisable ; et les instruments
+viennent des programmes MIDI inscrits dans le fichier, qui sont parfois fantaisistes
+quand la partition a été importée depuis un MIDI.
+
 ## Fichiers
 
 - `main.js` : scène, battue, regard, logique du chef.

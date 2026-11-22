@@ -317,6 +317,7 @@ let prochainTemps = 0;        // instant du prochain temps programmé
 let position = 0;             // où l'on en est dans la partition, en noires
 let uniteBattue = 1;          // ce que vaut une battue, en noires
 let raisonArret = '';         // message passager après une coupure
+let finMorceau = -Infinity;   // instant où le morceau s'est terminé
 let decalageMs = 0;
 let tempsProgrammes = [];     // pour synchroniser l'image sur le son
 let tempsRalentiFaits = 0;
@@ -372,6 +373,7 @@ function ictus(t) {
   flashPointe = 1;
 
   if (etat === 'attente') {
+    if (t < finMorceau + 2) { leveeTemps = []; return; } // on laisse la fin résonner
     if (leveeTemps.length && t - leveeTemps[leveeTemps.length - 1] > REGLAGES.intervalleMaxLevee) {
       leveeTemps = [];
     }
@@ -431,7 +433,13 @@ function programmer() {
     if (orchestre.pret && position >= orchestre.totalTemps) {
       etat = 'attente';
       tempsDepart = 0;
+      leveeTemps = [];
       ictus.dernier = undefined;
+      // Sans ce délai, deux battues de plus relanceraient la mesure 1 par-dessus
+      // les derniers accords.
+      finMorceau = audio.currentTime;
+      raisonArret = 'Fin du morceau — rebats dans 2 s pour reprendre au début';
+      setTimeout(() => { raisonArret = ''; }, 6000);
       break;
     }
 

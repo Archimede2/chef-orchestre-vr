@@ -164,15 +164,30 @@ export function convertirMusicXML(texte, nomFichier) {
           if (t0 >= L - 1e-6) continue;
           const d = Math.min(dur / div, L - t0);
           const liens = new Set([...el.querySelectorAll(':scope > tie')].map((t) => t.getAttribute('type')));
-          if (liens.has('stop') && enCours[h]) {
-            enCours[h][1] = +(debutMesure + t0 + d - enCours[h][0]).toFixed(4);
-            if (!liens.has('start')) delete enCours[h];
-            continue;
+          // Apparier les liaisons par voix ET par hauteur : sinon deux voix qui
+          // tiennent la même note s'échangent leurs liaisons. Et refuser une
+          // liaison qui remonterait à plus de huit mesures : c'est une erreur
+          // d'écriture, mieux vaut rejouer la note que tenir un son interminable.
+          const voix = el.querySelector(':scope > voice')?.textContent || '1';
+          const cle = `${voix}:${h}`;
+          let ouvert = enCours[cle] ? cle : null;
+          if (!ouvert) { // repli : la même note tenue, mais notée dans une autre voix
+            ouvert = Object.keys(enCours).find((k) => k.endsWith(`:${h}`)) || null;
+          }
+          if (liens.has('stop') && ouvert) {
+            const n0 = enCours[ouvert];
+            delete enCours[ouvert];
+            if (debutMesure + t0 - n0[0] <= 32) {
+              n0[1] = +(debutMesure + t0 + d - n0[0]).toFixed(4);
+              if (liens.has('start')) enCours[cle] = n0;
+              continue;
+            }
+            // au-delà de huit mesures, c'est une liaison mal appariée : on rejoue la note
           }
           const note = [+(debutMesure + t0).toFixed(4), +d.toFixed(4), h, nuance,
             pizzSon && pizzMode ? 1 : 0];
           notes.push(note);
-          if (liens.has('start')) enCours[h] = note;
+          if (liens.has('start')) enCours[cle] = note;
         }
       }
     });
@@ -213,6 +228,7 @@ let position = 0;          // où l'on en est dans la partition, en noires
 let uniteBattue = 1;       // ce que vaut une battue, en noires
 let uniteManuelle = 0;     // 0 = automatique, d'après le chiffrage
 let raisonArret = '';      // message passager après une coupure
+let finMorceau = -Infinity; // instant où le morceau s'est terminé
 let leveeTemps = [];
 let periode = 0.75;
 let prochainTemps = 0;
@@ -315,6 +331,7 @@ function ictus(t, cibleGain) {
   if (cibleGain != null) gainGeste += (cibleGain - gainGeste) * 0.5;
 
   if (etat === 'attente') {
+    if (t < finMorceau + 2) { leveeTemps = []; return; } // on laisse la fin résonner
     if (leveeTemps.length && t - leveeTemps[leveeTemps.length - 1] > REG.intervalleMaxLevee) leveeTemps = [];
     leveeTemps.push(t);
     if (leveeTemps.length <= REG.tempsLevee) { clic(Math.max(t, audio?.currentTime || 0)); return; }
@@ -366,7 +383,13 @@ function programmer() {
     if (orchestre?.pret && position >= orchestre.totalTemps) { // fin du morceau
       etat = 'attente';
       tempsDepart = 0;
+      leveeTemps = [];
       ictus.dernier = undefined;
+      // Sans ce délai, deux battues de plus relanceraient aussitôt la mesure 1
+      // par-dessus les derniers accords.
+      finMorceau = audio.currentTime;
+      raisonArret = 'Fin du morceau — rebats dans 2 s pour reprendre au début';
+      setTimeout(() => { raisonArret = ''; }, 6000);
       break;
     }
     if (etat === 'jeu' && prochainTemps - dernierIctus > periode * REG.tempsSansBattue) {
@@ -429,6 +452,7 @@ async function nouvellePartition(p, texteXML) {
   partition = p;
   etat = 'attente'; leveeTemps = []; tempsDepart = 0; tempsProgrammes.length = 0;
   cursorMes = 0; curseurOsmd = 0; position = 0; raisonArret = ''; mesureVisee = null;
+  finMorceau = -Infinity;
   cercle.reinitialiser();
   uniteBattue = uniteA(0);
   $('accueil').style.display = 'none';
@@ -471,9 +495,12 @@ async function chargerSons() {
   orchestre = new Orchestre(audio);
   const n = partition.pupitres.length;
   const positions = {};
+  const demi = Math.min(0.6 * (n - 1), 4); // au-delà, les pupitres extrêmes deviennent inaudibles
   partition.pupitres.forEach((p, i) => {
-    positions[p.nom] = { x: (i - (n - 1) / 2) * 1.2, y: 1.2, z: -3 };
+    positions[p.nom] = { x: n > 1 ? (i / (n - 1) - 0.5) * 2 * demi : 0, y: 1.2, z: -3 };
   });
+  // Beaucoup de pupitres : on baisse le niveau général pour ne pas saturer
+  orchestre.maitre.gain.value = Math.min(0.8, 3.2 / Math.sqrt(Math.max(1, n)));
   await orchestre.charger(partition, positions,
     (f, t) => statut(`Chargement des sons : ${f} / ${t}`));
   statut('');
