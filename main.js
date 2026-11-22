@@ -5,7 +5,9 @@
 
 import * as THREE from 'three';
 import { VRButton } from 'three/addons/webxr/VRButton.js';
-import { Orchestre } from './orchestre.js?v=5';
+import { Orchestre } from './orchestre.js?v=6';
+import { uniteDeBattue, chiffrageA, nomUnite, decrireChiffrage } from './metrique.js?v=1';
+import { DetecteurCercle } from './cercle.js?v=1';
 
 // ---------------------------------------------------------------- Réglages
 const REGLAGES = {
@@ -219,9 +221,24 @@ let yPrec = null, vy = 0, enDescente = false;
 let yHaut = -Infinity, amplitude = 0;
 let dernierIctus = -Infinity;
 
+const droiteCam = new THREE.Vector3();
+
 function suivreBaguette(t, dt) {
   if (!baguette.parent || dt <= 0) { yPrec = null; return; }
   pointe.getWorldPosition(posPointe);
+
+  // Geste circulaire, mesuré dans le plan vertical face au chef
+  const cam = renderer.xr.isPresenting ? renderer.xr.getCamera() : camera;
+  cam.getWorldPosition(posTete);
+  cam.getWorldDirection(dirTete);
+  droiteCam.set(-dirTete.z, 0, dirTete.x).normalize();
+  cercle.reglerFenetre(dureeMesure());
+  const g = cercle.ajouter(
+    (posPointe.x - posTete.x) * droiteCam.x + (posPointe.z - posTete.z) * droiteCam.z,
+    posPointe.y, t);
+  if (g.arret) { couperParCercle(); enDescente = false; yPrec = posPointe.y; return; }
+  if (g.preavis) { enDescente = false; yPrec = posPointe.y; return; }
+
   if (yPrec === null) { yPrec = posPointe.y; return; }
   const vInst = (posPointe.y - yPrec) / dt;
   yPrec = posPointe.y;
@@ -297,10 +314,58 @@ let evenementsVisuels = [];   // [instant, pupitre, intensité] pour animer les 
 let leveeTemps = [];          // instants des battues à vide
 let periode = 0.8;            // s par temps
 let prochainTemps = 0;        // instant du prochain temps programmé
-let tempsJoues = 0;
+let position = 0;             // où l'on en est dans la partition, en noires
+let uniteBattue = 1;          // ce que vaut une battue, en noires
+let raisonArret = '';         // message passager après une coupure
 let decalageMs = 0;
 let tempsProgrammes = [];     // pour synchroniser l'image sur le son
 let tempsRalentiFaits = 0;
+
+// ---------------------------------------------------------------- Métrique
+function uniteA(temps) {
+  const c = chiffrageA(orchestre.partition, temps);
+  return uniteDeBattue(c.num, c.den).unite;
+}
+
+function dureeMesure() {
+  if (etat === 'attente' || !orchestre.partition) return 0;
+  const c = chiffrageA(orchestre.partition, position);
+  return (c.num * 4 / c.den) * (periode / uniteBattue);
+}
+
+function mesureDe(temps) {
+  const d = orchestre.partition?.debutsMesures;
+  if (!d) {
+    const tpm = orchestre.partition?.tempsParMesure || 4;
+    return Math.floor(temps / tpm);
+  }
+  let i = 0;
+  while (i + 1 < d.length - 1 && d[i + 1] <= temps + 1e-6) i++;
+  return i;
+}
+
+function debutDeMesure(temps) {
+  const d = orchestre.partition?.debutsMesures;
+  if (d) return d[mesureDe(temps)] ?? 0;
+  const tpm = orchestre.partition?.tempsParMesure || 4;
+  return Math.floor(temps / tpm) * tpm;
+}
+
+// ---------------------------------------------------------------- Geste circulaire : couper
+const cercle = new DetecteurCercle({ rayonMin: 0.07 }); // en mètres
+
+function couperParCercle() {
+  if (etat === 'attente') return;
+  etat = 'attente';
+  orchestre.couper();
+  tempsProgrammes = [];
+  evenementsVisuels = [];
+  leveeTemps = [];
+  ictus.dernier = undefined;
+  tempsDepart = debutDeMesure(position);
+  raisonArret = `Coupé au cercle (mesure ${mesureDe(position) + 1})`;
+  setTimeout(() => { raisonArret = ''; }, 4000);
+}
 
 function ictus(t) {
   dernierIctus = t;
@@ -319,7 +384,9 @@ function ictus(t) {
     const ecarts = leveeTemps.slice(1).map((v, i) => v - leveeTemps[i]);
     periode = ecarts.reduce((a, b) => a + b, 0) / ecarts.length;
     etat = 'jeu';
-    tempsJoues = tempsDepart;
+    position = tempsDepart;
+    uniteBattue = uniteA(position);
+    raisonArret = '';
     leveeTemps = [];
     prochainTemps = t;
     ictus.dernier = t;
@@ -347,19 +414,21 @@ function programmer() {
   while (etat !== 'attente' && prochainTemps < maintenant + 0.1) {
     let quand = Math.max(prochainTemps, maintenant);
     if (etat === 'ralenti') quand += (Math.random() - 0.5) * 0.06; // le décalage
+    uniteBattue = uniteA(position);
     if (orchestre.pret) {
-      evenementsVisuels.push(...orchestre.jouerTemps(tempsJoues, quand, periode, {
-        gain: gainPupitre,
-        decalage: etat === 'ralenti' ? REGLAGES.decalageRalenti : 0,
-      }));
+      evenementsVisuels.push(...orchestre.jouerIntervalle(position, position + uniteBattue, quand,
+        periode / uniteBattue, {
+          gain: gainPupitre,
+          decalage: etat === 'ralenti' ? REGLAGES.decalageRalenti : 0,
+        }));
     } else {
-      clic(quand, tempsJoues === tempsDepart ? 1320 : 990, 0.35);
+      clic(quand, position === tempsDepart ? 1320 : 990, 0.35);
     }
     tempsProgrammes.push(quand);
-    tempsJoues++;
+    position += uniteBattue;
 
     // Fin du morceau
-    if (orchestre.pret && tempsJoues >= orchestre.totalTemps) {
+    if (orchestre.pret && position >= orchestre.totalTemps) {
       etat = 'attente';
       tempsDepart = 0;
       ictus.dernier = undefined;
@@ -377,8 +446,7 @@ function programmer() {
         etat = 'attente';
         orchestre.couper();
         // On reprendra au début de la mesure interrompue
-        const tpm = orchestre.partition?.tempsParMesure || 4;
-        tempsDepart = Math.floor(tempsJoues / tpm) * tpm;
+        tempsDepart = debutDeMesure(position);
         ictus.dernier = undefined;
         break;
       }
@@ -477,14 +545,16 @@ renderer.setAnimationLoop(() => {
   pointe.material.color.setRGB(1, 1 - 0.6 * flashPointe, 1 - flashPointe);
   pointe.scale.setScalar(1 + 1.5 * flashPointe);
 
-  const tpm = orchestre.partition?.tempsParMesure || 4;
-  const mesure = Math.floor(Math.max(0, tempsJoues - 1) / tpm) + 1;
+  const ici = etat === 'attente' ? tempsDepart : position;
+  const ch = chiffrageA(orchestre.partition, ici);
   const leveeTxt = etat === 'attente'
-    ? `Levée : ${leveeTemps.length} / ${REGLAGES.tempsLeveeAvantDepart} battues à vide — départ mesure ${Math.floor(tempsDepart / tpm) + 1}`
-    : `Mesure ${mesure} / ${orchestre.partition?.mesures ?? '?'}   Nuance : x${gainGeste.toFixed(2)}`;
+    ? `Levée : ${leveeTemps.length} / ${REGLAGES.tempsLeveeAvantDepart} battues à vide — départ mesure ${mesureDe(tempsDepart) + 1}`
+    : `Mesure ${mesureDe(position) + 1} / ${orchestre.partition?.mesures ?? '?'}   Nuance : x${gainGeste.toFixed(2)}`;
+  const cercleTxt = cercle.tours > 0.15 ? `   Cercle : ${Math.round(cercle.tours * 100)} %` : '';
   majHud([
-    chargement || NOMS_ETAT[etat],
-    `Tempo : ${etat === 'attente' ? '—' : Math.round(60 / periode) + ' BPM'}`,
+    chargement || raisonArret || NOMS_ETAT[etat],
+    `${orchestre.partition ? decrireChiffrage(ch.num, ch.den) : '—'}`,
+    `Tempo : ${etat === 'attente' ? '—' : Math.round(60 / periode) + ' battues/min'}${cercleTxt}`,
     leveeTxt,
     `Décalage geste / temps : ${etat === 'attente' ? '—' : decalageMs + ' ms'}   Amplitude : ${Math.round(amplitude * 100)} cm`,
     `Regard : ${pupitreRegarde ? pupitreRegarde.nom : '—'}`,

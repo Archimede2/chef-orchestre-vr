@@ -1,5 +1,6 @@
 // Moteur sonore : charge la partition de jeu et les sons, puis joue les notes
-// de chaque temps de battue au tempo donné par le chef.
+// au tempo donné par le chef. Tout se compte en noires ; une battue peut valoir
+// autre chose qu'une noire (voir metrique.js), d'où jouerIntervalle().
 // Sons : FluidR3 GM (Frank Wen, CC BY 3.0) via midi-js-soundfonts de Benjamin Gleitzman.
 
 const BANQUE = 'https://gleitz.github.io/midi-js-soundfonts/FluidR3_GM/';
@@ -87,19 +88,28 @@ export class Orchestre {
     this.pret = true;
   }
 
-  // Joue les notes qui commencent dans le temps k, ce temps tombant à l'instant t.
+  // Joue les notes dont l'attaque tombe dans [t0, t1[, en noires ; t0 sonne à
+  // l'instant `quand`, et `secParNoire` dit combien de temps dure une noire.
   // Renvoie les événements [instant, pupitre, intensité] pour l'image.
-  jouerTemps(k, t, periode, { gain, decalage = 0 }) {
+  jouerIntervalle(t0, t1, quand, secParNoire, { gain, decalage = 0 }) {
     const evenements = [];
-    for (const { pup, n } of this.parTemps[k] || []) {
-      let quand = t + (n[0] - k) * periode + (Math.random() - 0.5) * decalage;
-      quand = Math.max(quand, this.audio.currentTime);
-      const duree = Math.max(0.08, n[1] * periode);
-      const intensite = n[3] * gain(pup.nom);
-      this.note(pup, n[2], quand, duree, intensite, n[4]);
-      evenements.push([quand, pup.nom, intensite]);
+    for (let k = Math.floor(t0); k < t1; k++) {
+      for (const { pup, n } of this.parTemps[k] || []) {
+        if (n[0] < t0 - 1e-9 || n[0] >= t1 - 1e-9) continue;
+        let q = quand + (n[0] - t0) * secParNoire + (Math.random() - 0.5) * decalage;
+        q = Math.max(q, this.audio.currentTime);
+        const duree = Math.max(0.08, n[1] * secParNoire);
+        const intensite = n[3] * gain(pup.nom);
+        this.note(pup, n[2], q, duree, intensite, n[4]);
+        evenements.push([q, pup.nom, intensite]);
+      }
     }
     return evenements;
+  }
+
+  // Raccourci : une battue qui vaut exactement une noire
+  jouerTemps(k, t, periode, options) {
+    return this.jouerIntervalle(k, k + 1, t, periode, options);
   }
 
   note(pup, hauteur, quand, duree, intensite, pizz) {

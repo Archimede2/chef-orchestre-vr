@@ -6,6 +6,11 @@ c'est la baguette du joueur qui fixe le tempo.
 
 Usage : python3 outils/convertir_musicxml.py source.musicxml sortie.json
 
+Limite connue : ce script suppose un chiffrage constant d'un bout à l'autre
+(c'est le cas de la Pavane). Pour une partition qui change de mesure en cours
+de route, passe par le lecteur (lecteur.html), dont le convertisseur suit les
+changements.
+
 Corrections automatiques (la source vient d'une reconnaissance de PDF) :
 - chaque mesure est recalée sur son numéro (pas de décalage qui s'accumule) ;
 - une mesure trop courte reçoit un silence au début ;
@@ -45,6 +50,7 @@ def convertir(chemin):
     racine = ET.parse(chemin).getroot()
     noms = {sp.get('id'): (sp.findtext('part-name') or '').strip() for sp in racine.iter('score-part')}
     temps_par_mesure = 4
+    chiffrage = (4, 4)
     nb_mesures = 0
     pupitres = {}
     rapport = []
@@ -70,7 +76,9 @@ def convertir(chemin):
             for t in m.iter('transpose'):
                 transpo = int(t.findtext('chromatic') or 0) + 12 * int(t.findtext('octave-change') or 0)
             for t in m.iter('time'):
-                temps_par_mesure = int(t.findtext('beats')) * 4 // int(t.findtext('beat-type'))
+                num, den = int(t.findtext('beats')), int(t.findtext('beat-type'))
+                temps_par_mesure = num * 4 // den
+                chiffrage = (num, den)
 
             # Longueur réelle de la mesure, pour repérer les mesures abîmées
             pos = fin = 0
@@ -144,6 +152,10 @@ def convertir(chemin):
         'titre': 'Gabriel Fauré — Pavane, op. 50',
         'source': 'CPDL (édition Finale), lue dans le PDF par outils/pdf_vers_musicxml.py',
         'tempsParMesure': temps_par_mesure,
+        # Ce script suppose un chiffrage constant (voir le docstring) : une seule entrée.
+        'chiffrage': list(chiffrage),
+        'chiffrages': [{'temps': 0, 'num': chiffrage[0], 'den': chiffrage[1]}],
+        'debutsMesures': [i * temps_par_mesure for i in range(nb_mesures + 1)],
         'mesures': nb_mesures,
         'tempoIndique': 80,
         'format': '[temps, durée, hauteur MIDI, nuance 0-1, pizz 0/1] — temps et durée en noires',

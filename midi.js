@@ -188,9 +188,9 @@ export function lireMIDI(buffer, nomFichier) {
   // ----- Mesures, d'après les chiffrages rencontrés
   const totalTemps = Math.ceil(Math.max(...notes.map((n) => n.tickOff)) / division);
   const sigs = (chiffrages.length ? chiffrages : [{ tick: 0, num: 4, den: 4 }])
-    .map((c) => ({ temps: c.tick / division, L: c.num * 4 / c.den }))
+    .map((c) => ({ temps: +(c.tick / division).toFixed(4), num: c.num, den: c.den, L: c.num * 4 / c.den }))
     .sort((a, b) => a.temps - b.temps);
-  if (sigs[0].temps > 0) sigs.unshift({ temps: 0, L: 4 });
+  if (sigs[0].temps > 0) sigs.unshift({ temps: 0, num: 4, den: 4, L: 4 });
   const debuts = [0];
   let t = 0, si = 0;
   while (t < totalTemps - 1e-6 && debuts.length < 100000) {
@@ -204,6 +204,8 @@ export function lireMIDI(buffer, nomFichier) {
     titre: (nomFichier || titreMeta || 'Fichier MIDI').replace(/\.(mid|midi)$/i, ''),
     tempoIndique: tempos.length ? Math.round(60e6 / tempos[0].us) : 100,
     tempsParMesure: sigs[0].L,
+    chiffrage: [sigs[0].num, sigs[0].den],
+    chiffrages: sigs.map((c) => ({ temps: c.temps, num: c.num, den: c.den })),
     mesures: debuts.length - 1,
     totalTemps,
     debutsMesures: debuts,

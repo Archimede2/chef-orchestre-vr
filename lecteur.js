@@ -4,7 +4,9 @@
 // Même logique de chef que le jeu VR : levée, suivi du tempo, ralenti, arrêt.
 
 import { Orchestre } from './orchestre.js?v=5';
-import { lireMIDI, sonGM } from './midi.js?v=1';
+import { lireMIDI, sonGM } from './midi.js?v=2';
+import { uniteDeBattue, chiffrageA, nomUnite, decrireChiffrage, UNITES_MANUELLES } from './metrique.js?v=1';
+import { DetecteurCercle } from './cercle.js?v=1';
 
 const $ = (id) => document.getElementById(id);
 
@@ -69,12 +71,18 @@ export function convertirMusicXML(texte, nomFichier) {
     [...p.children].filter((e) => e.tagName === 'measure').length));
   const attendu = Array(nMes).fill(0);
   const reel = Array(nMes).fill(0);
+  const sigs = Array(nMes).fill(null); // chiffrage déclaré à chaque mesure
   for (const part of parts) {
     let div = 1, exp = 4;
     [...part.children].filter((e) => e.tagName === 'measure').forEach((m, i) => {
       for (const d of m.querySelectorAll('attributes > divisions')) div = +d.textContent;
       const t = m.querySelector('attributes > time');
-      if (t) exp = (+t.querySelector('beats').textContent) * 4 / (+t.querySelector('beat-type').textContent);
+      if (t) {
+        const num = parseInt(t.querySelector('beats').textContent, 10) || 4;
+        const den = parseInt(t.querySelector('beat-type').textContent, 10) || 4;
+        exp = num * 4 / den;
+        sigs[i] = sigs[i] || { num, den };
+      }
       let pos = 0, mx = 0;
       for (const el of m.children) {
         if (el.tagName === 'note') {
@@ -93,6 +101,18 @@ export function convertirMusicXML(texte, nomFichier) {
     (i === 0 && reel[0] > 0 && reel[0] < e - 1e-6) ? reel[0] : e); // anacrouse
   const debuts = [0];
   for (let i = 0; i < nMes; i++) debuts.push(debuts[i] + longueurs[i]);
+
+  // Chiffrages : celui du début, puis chaque changement, repéré en noires
+  const chiffrages = [];
+  let sigCourant = sigs.find(Boolean) || { num: 4, den: 4 };
+  for (let i = 0; i < nMes; i++) {
+    if (sigs[i] && (sigs[i].num !== sigCourant.num || sigs[i].den !== sigCourant.den || !chiffrages.length)) {
+      sigCourant = sigs[i];
+      chiffrages.push({ temps: debuts[i], num: sigCourant.num, den: sigCourant.den });
+    }
+  }
+  if (!chiffrages.length) chiffrages.push({ temps: 0, num: sigCourant.num, den: sigCourant.den });
+  if (chiffrages[0].temps > 0) chiffrages.unshift({ temps: 0, num: 4, den: 4 });
 
   // Passe 2 : notes de chaque partie
   const pupitres = [];
@@ -169,6 +189,8 @@ export function convertirMusicXML(texte, nomFichier) {
   return {
     titre, tempoIndique, pupitres,
     tempsParMesure: attendu[0] || 4,
+    chiffrage: [chiffrages[0].num, chiffrages[0].den],
+    chiffrages,
     mesures: nMes,
     totalTemps: debuts[nMes],
     debutsMesures: debuts,
@@ -187,10 +209,13 @@ let curseurOsmd = 0;          // position du curseur OSMD, distincte de la mesur
 const LIMITE_AFFICHAGE = 6e6; // caractères : au-delà, l'affichage de la partition ne tient pas
 
 let etat = 'attente';      // attente | jeu | ralenti
+let position = 0;          // où l'on en est dans la partition, en noires
+let uniteBattue = 1;       // ce que vaut une battue, en noires
+let uniteManuelle = 0;     // 0 = automatique, d'après le chiffrage
+let raisonArret = '';      // message passager après une coupure
 let leveeTemps = [];
 let periode = 0.75;
 let prochainTemps = 0;
-let tempsJoues = 0;
 let tempsDepart = 0;
 let tempsRalentiFaits = 0;
 let dernierIctus = -Infinity;
@@ -203,6 +228,22 @@ const muets = new Set();
 const tempsProgrammes = []; // {quand, temps} pour le curseur
 
 const NOMS_ETAT = { attente: 'En attente de la levée', jeu: 'Lecture', ralenti: 'Ralenti…' };
+
+// ---------------------------------------------------------------- Métrique
+// Ce que vaut une battue à cet endroit de la partition : la noire en 4/4,
+// la noire pointée en 6/8, la blanche en 2/2…
+function uniteA(temps) {
+  if (uniteManuelle) return uniteManuelle;
+  const c = chiffrageA(partition, temps);
+  return uniteDeBattue(c.num, c.den).unite;
+}
+
+// Durée d'une mesure, qui sert de garde-fou au détecteur de cercle
+function dureeMesure() {
+  if (etat === 'attente' || !partition) return 0;
+  const c = chiffrageA(partition, position);
+  return (c.num * 4 / c.den) * (periode / uniteBattue);
+}
 
 function statut(txt) { $('statut').textContent = txt || ''; }
 
@@ -234,6 +275,24 @@ function clic(quand, freq = 520, fort = 0.25) {
 }
 
 // ---------------------------------------------------------------- Le chef
+// ---------------------------------------------------------------- Geste circulaire : couper
+const cercle = new DetecteurCercle({ rayonMin: 0.035 }); // coordonnées d'image (0 à 1)
+
+function couperParCercle() {
+  if (etat === 'attente') {
+    raisonArret = 'Cercle vu — rien à couper';
+    return;
+  }
+  etat = 'attente';
+  orchestre?.couper();
+  tempsProgrammes.length = 0;
+  leveeTemps = [];
+  ictus.dernier = undefined;
+  tempsDepart = partition?.debutsMesures?.[mesureDe(position)] ?? 0;
+  raisonArret = `Coupé au cercle (mesure ${mesureDe(position) + 1})`;
+  setTimeout(() => { raisonArret = ''; }, 4000);
+}
+
 function battueVisuelle() {
   const b = $('battement');
   b.style.background = '#ffd27a';
@@ -263,8 +322,10 @@ function ictus(t, cibleGain) {
     periode = ecarts.reduce((a, b) => a + b, 0) / ecarts.length;
     periode = Math.min(2, Math.max(0.25, periode));
     etat = 'jeu';
-    tempsJoues = tempsDepart;
+    position = tempsDepart;
+    uniteBattue = uniteA(position);
     leveeTemps = [];
+    raisonArret = '';
     prochainTemps = Math.max(t, audio.currentTime);
     ictus.dernier = t;
     decalMs = 0;
@@ -290,18 +351,19 @@ function programmer() {
   while (etat !== 'attente' && prochainTemps < maintenant + 0.1) {
     let quand = Math.max(prochainTemps, maintenant);
     if (etat === 'ralenti') quand += (Math.random() - 0.5) * 0.06;
+    uniteBattue = uniteA(position);
     if (orchestre?.pret) {
-      orchestre.jouerTemps(tempsJoues, quand, periode, {
+      orchestre.jouerIntervalle(position, position + uniteBattue, quand, periode / uniteBattue, {
         gain: gainPupitre,
         decalage: etat === 'ralenti' ? 0.12 : 0,
       });
     } else {
       clic(quand, 990, 0.3);
     }
-    tempsProgrammes.push({ quand, temps: tempsJoues });
-    tempsJoues++;
+    tempsProgrammes.push({ quand, temps: position });
+    position += uniteBattue;
 
-    if (orchestre?.pret && tempsJoues >= orchestre.totalTemps) { // fin du morceau
+    if (orchestre?.pret && position >= orchestre.totalTemps) { // fin du morceau
       etat = 'attente';
       tempsDepart = 0;
       ictus.dernier = undefined;
@@ -318,7 +380,7 @@ function programmer() {
         etat = 'attente';
         orchestre?.couper();
         ictus.dernier = undefined;
-        tempsDepart = Math.floor(partition?.debutsMesures?.[mesureDe(tempsJoues)] ?? 0);
+        tempsDepart = partition?.debutsMesures?.[mesureDe(position)] ?? 0;
         break;
       }
     }
@@ -366,7 +428,9 @@ async function nouvellePartition(p, texteXML) {
   orchestre = null;
   partition = p;
   etat = 'attente'; leveeTemps = []; tempsDepart = 0; tempsProgrammes.length = 0;
-  cursorMes = 0; curseurOsmd = 0;
+  cursorMes = 0; curseurOsmd = 0; position = 0; raisonArret = '';
+  cercle.reinitialiser();
+  uniteBattue = uniteA(0);
   $('accueil').style.display = 'none';
   construirePupitres();
   document.title = `${p.titre} — Lecteur`;
@@ -516,6 +580,13 @@ function traiterMains(res) {
 function mainDroite(lm) {
   const y = lm[8].y; // bout de l'index ; y augmente vers le bas
   const t = performance.now() / 1000;
+
+  // Geste circulaire : coupure. Le préavis empêche le cercle de compter des temps.
+  cercle.reglerFenetre(dureeMesure());
+  const g = cercle.ajouter(lm[8].x, lm[8].y, t);
+  if (g.arret) { ensureAudio(); couperParCercle(); droite.desc = false; return; }
+  if (g.preavis) { droite.desc = false; droite.yPrec = y; droite.tPrec = t; return; }
+
   const dt = t - droite.tPrec;
   droite.tPrec = t;
   if (droite.yPrec == null || !dt || dt > 0.2) { droite.yPrec = y; return; }
@@ -613,6 +684,21 @@ $('btnSon').addEventListener('click', () => { ensureAudio(); $('btnSon').textCon
 $('btnWebcam').addEventListener('click', () => { ensureAudio(); demarrerWebcam(); });
 $('avance').addEventListener('input', () => { $('avanceV').textContent = $('avance').value + ' ms'; });
 
+{
+  const sel = $('unite');
+  for (const [v, nom] of UNITES_MANUELLES) {
+    const o = document.createElement('option');
+    o.value = v; o.textContent = nom;
+    sel.appendChild(o);
+  }
+  sel.addEventListener('change', () => { uniteManuelle = parseFloat(sel.value) || 0; });
+}
+$('seuilCercle').addEventListener('input', () => {
+  cercle.toursArret = +$('seuilCercle').value;
+  cercle.toursPreavis = cercle.toursArret * 0.55;
+  $('seuilCercleV').textContent = `${Math.round(cercle.toursArret * 100)} % de tour`;
+});
+
 addEventListener('keydown', (e) => {
   if (e.code === 'Space') {
     e.preventDefault();
@@ -647,11 +733,19 @@ function boucle() {
     }
   }
   // HUD
-  $('etatEl').textContent = etat === 'attente'
+  $('etatEl').textContent = raisonArret || (etat === 'attente'
     ? `${NOMS_ETAT[etat]} (${leveeTemps.length}/${REG.tempsLevee} à vide, reprise mesure ${mesureDe(tempsDepart) + 1})`
-    : NOMS_ETAT[etat];
-  $('tempoEl').textContent = etat === 'attente' ? '—' : `${Math.round(60 / periode)} BPM`;
+    : NOMS_ETAT[etat]);
+  $('tempoEl').textContent = etat === 'attente' ? '—' : `${Math.round(60 / periode)} battues/min`;
   $('mesEl').textContent = partition ? `${cursorMes + 1} / ${partition.mesures}` : '—';
+  if (partition) {
+    const c = chiffrageA(partition, etat === 'attente' ? tempsDepart : position);
+    const u = uniteA(etat === 'attente' ? tempsDepart : position);
+    $('metriqueEl').textContent = uniteManuelle
+      ? `${c.num}/${c.den} — à la ${nomUnite(u)} (imposée)`
+      : decrireChiffrage(c.num, c.den);
+  }
+  $('cercleEl').style.width = `${Math.min(100, (cercle.tours / (cercle.toursArret || 1)) * 100)}%`;
   $('decalEl').textContent = etat === 'jeu' ? `${decalMs} ms` : '—';
   $('nuanceEl').textContent = `×${(gainGeste * nuanceGauche).toFixed(2)}`;
 }
