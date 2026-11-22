@@ -24,6 +24,8 @@ Version sans 3D, pensée pour le Mac : https://archimede2.github.io/chef-orchest
 - Battue : Espace, webcam (MediaPipe, main droite = battue, main gauche = nuance) ou iPhone (baguette.html).
 - Solo / muet par pupitre ; réglage « avance » pour compenser le retard de la caméra.
 - **Unité de battue** d'après le chiffrage, ou imposée à la main dans le panneau de droite.
+- **Frise en haut de la partition** : cliquer ou glisser pour aller à n'importe quelle mesure
+  (fonctionne aussi sans partition affichée, pour un MIDI).
 - **Cercle de la main droite = coupure** (webcam seulement : l'iPhone n'envoie que les temps).
 - Conversion MusicXML -> partition de jeu faite dans le navigateur (portage JS de convertir_musicxml.py).
 - **Fichiers MIDI (.mid) lus directement** (`midi.js`) : pas de partition affichée, mais c'est la bonne voie

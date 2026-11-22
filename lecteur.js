@@ -428,7 +428,7 @@ async function nouvellePartition(p, texteXML) {
   orchestre = null;
   partition = p;
   etat = 'attente'; leveeTemps = []; tempsDepart = 0; tempsProgrammes.length = 0;
-  cursorMes = 0; curseurOsmd = 0; position = 0; raisonArret = '';
+  cursorMes = 0; curseurOsmd = 0; position = 0; raisonArret = ''; mesureVisee = null;
   cercle.reinitialiser();
   uniteBattue = uniteA(0);
   $('accueil').style.display = 'none';
@@ -510,6 +510,63 @@ function placerCurseur(mes) {
     c.update?.();
     c.cursorElement?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   } catch (e) { /* le son prime sur le curseur */ }
+}
+
+// ---------------------------------------------------------------- Frise : se déplacer dans la partition
+let mesureVisee = null; // mesure montrée pendant qu'on glisse, avant de valider
+
+function allerAMesure(m) {
+  if (!partition) return;
+  const m2 = Math.max(0, Math.min(partition.mesures - 1, m));
+  const t = partition.debutsMesures?.[m2] ?? 0;
+  orchestre?.couper();
+  tempsProgrammes.length = 0;
+  tempsDepart = t;
+  position = t;
+  uniteBattue = uniteA(t);
+  cursorMes = m2;
+  placerCurseur(m2);
+  if (etat !== 'attente' && audio) prochainTemps = audio.currentTime; // on repart d'ici sans attendre
+  raisonArret = '';
+}
+
+function majFrise() {
+  const m = mesureVisee ?? cursorMes;
+  const n = partition?.mesures || 1;
+  const f = n > 1 ? m / (n - 1) : 0;
+  $('frisePlein').style.width = `${f * 100}%`;
+  $('friseTete').style.left = `${f * 100}%`;
+  $('friseTexte').textContent = partition
+    ? `${mesureVisee != null ? 'Aller à la ' : ''}mesure ${m + 1} / ${n}` : '—';
+}
+
+{
+  const frise = $('frise');
+  const mesureSous = (e) => {
+    const r = $('friseFond').getBoundingClientRect();
+    const f = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
+    return Math.round(f * ((partition?.mesures || 1) - 1));
+  };
+  frise.addEventListener('pointerdown', (e) => {
+    if (!partition) return;
+    frise.setPointerCapture(e.pointerId);
+    mesureVisee = mesureSous(e); // on ne déplace vraiment qu'au relâchement : glisser reste fluide
+    majFrise();
+  });
+  frise.addEventListener('pointermove', (e) => {
+    if (mesureVisee == null) return;
+    mesureVisee = mesureSous(e);
+    majFrise();
+  });
+  const relacher = () => {
+    if (mesureVisee == null) return;
+    const m = mesureVisee;
+    mesureVisee = null;
+    allerAMesure(m);
+    majFrise();
+  };
+  frise.addEventListener('pointerup', relacher);
+  frise.addEventListener('pointercancel', () => { mesureVisee = null; majFrise(); });
 }
 
 // ---------------------------------------------------------------- Webcam (MediaPipe, 2 mains)
@@ -745,6 +802,7 @@ function boucle() {
       ? `${c.num}/${c.den} — à la ${nomUnite(u)} (imposée)`
       : decrireChiffrage(c.num, c.den);
   }
+  majFrise();
   $('cercleEl').style.width = `${Math.min(100, (cercle.tours / (cercle.toursArret || 1)) * 100)}%`;
   $('decalEl').textContent = etat === 'jeu' ? `${decalMs} ms` : '—';
   $('nuanceEl').textContent = `×${(gainGeste * nuanceGauche).toFixed(2)}`;

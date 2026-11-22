@@ -23,6 +23,15 @@
   main { flex: 1; display: flex; min-height: 0; }
   #zoneScore { flex: 1; overflow: auto; background: #f5f2e9; }
   #score { padding: 12px; }
+  #frise { position: sticky; top: 0; z-index: 5; display: flex; align-items: center; gap: 12px;
+           padding: 9px 14px; background: rgba(21,21,30,.96); border-bottom: 1px solid #2c2c3a;
+           cursor: pointer; touch-action: none; }
+  #friseFond { position: relative; flex: 1; height: 8px; background: #33334a; border-radius: 4px; }
+  #frisePlein { height: 100%; width: 0; background: var(--accent); border-radius: 4px; }
+  #friseTete { position: absolute; top: -4px; left: 0; width: 4px; height: 16px; border-radius: 2px;
+               background: #fff; transform: translateX(-2px); }
+  #friseTexte { color: var(--texte); font-size: 13px; min-width: 150px; text-align: right;
+                font-variant-numeric: tabular-nums; }
   #accueil { color: #555; padding: 40px; font-size: 15px; max-width: 540px; }
   aside { width: 280px; min-width: 280px; overflow: auto; background: var(--carte);
           border-left: 1px solid #2c2c3a; padding: 12px; display: flex; flex-direction: column; gap: 14px; }
@@ -64,6 +73,10 @@
 </header>
 <main>
   <div id="zoneScore">
+    <div id="frise" title="Cliquer ou glisser pour se déplacer dans la partition">
+      <div id="friseFond"><div id="frisePlein"></div><div id="friseTete"></div></div>
+      <div id="friseTexte">—</div>
+    </div>
     <div id="accueil">
       <b>Chef d'orchestre — lecteur pour compositeurs et arrangeurs.</b><br><br>
       Glisse ici un fichier <b>MusicXML</b> ou <b>MIDI</b> (ou bouton « Ouvrir »), clique sur « Activer le son »,
@@ -114,6 +127,6 @@
 </main>
 <div id="glisser">Dépose ton fichier MusicXML ou MIDI</div>
 <script src="https://cdn.jsdelivr.net/npm/opensheetmusicdisplay@1.8.4/build/opensheetmusicdisplay.min.js"></script>
-<script type="module" src="./lecteur.js?v=3"></script>
+<script type="module" src="./lecteur.js?v=4"></script>
 </body>
 </html>
